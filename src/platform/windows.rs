@@ -30,10 +30,11 @@ impl Platform for WindowsPlatform {
         use std::process::Command;
 
         let script = r#"
-            Add-Type @"
+Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Diagnostics;
 using System.Collections.Generic;
 
 public class WindowHelper {
@@ -64,6 +65,9 @@ public class WindowHelper {
     [DllImport("user32.dll")]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT {
         public int Left;
@@ -74,14 +78,16 @@ public class WindowHelper {
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-    public static List<string> GetWindows() {
+    public static string[] GetWindows() {
         var windows = new List<string>();
         var shellWindow = GetShellWindow();
+        var visibleWindows = new List<IntPtr>();
 
         EnumWindows((hWnd, lParam) => {
             if (hWnd == shellWindow) return true;
             if (!IsWindowVisible(hWnd)) return true;
-            if (GetWindowLong(hWnd, -16) == 0) return true;
+            int style = GetWindowLong(hWnd, -16);
+            if (style == 0) return true;
 
             int length = GetWindowTextLength(hWnd);
             if (length == 0) return true;
@@ -100,17 +106,28 @@ public class WindowHelper {
 
             bool minimized = IsIconic(hWnd);
 
-            windows.Add(string.Format("{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}",
-                hWnd, title, processId, rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, minimized));
+            // Format: hwnd|title|processId|x|y|width|height|minimized|processName
+            string processName = "Unknown";
+            try {
+                Process p = Process.GetProcessById((int)processId);
+                processName = p.ProcessName;
+            } catch {}
+
+            windows.Add(string.Format("{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}",
+                hWnd, title.Replace("|", " ").Replace("\n", " "), processId, 
+                rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top, 
+                minimized, processName));
 
             return true;
         }, IntPtr.Zero);
 
-        return windows;
+        return windows.ToArray();
     }
 }
 "@
-[WindowHelper]::GetWindows() | ConvertTo-Json -Compress
+
+$windows = [WindowHelper]::GetWindows()
+foreach ($w in $windows) { Write-Output $w }
 "#;
 
         let output = Command::new("powershell")
@@ -119,6 +136,13 @@ public class WindowHelper {
             .map_err(|e| PcControllerError::PlatformError(format!("Failed to execute PowerShell: {}", e)))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        
+        if !stderr.is_empty() {
+            tracing::debug!("PowerShell stderr: {}", stderr);
+        }
+        
+        tracing::debug!("PowerShell stdout: {}", stdout);
 
         if stdout.trim().is_empty() {
             return Ok(Vec::new());
@@ -126,35 +150,34 @@ public class WindowHelper {
 
         let mut windows = Vec::new();
 
-        let window_lines: Vec<&str> = if stdout.starts_with('[') {
-            stdout.lines().filter(|l| !l.starts_with('[') && !l.starts_with(']') && !l.trim().is_empty()).collect()
-        } else {
-            vec![stdout.trim()]
-        };
-
-        for (idx, line) in window_lines.iter().enumerate() {
-            let line = line.trim().trim_matches('"');
+        for line in stdout.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            
             let parts: Vec<&str> = line.split('|').collect();
 
-            if parts.len() >= 7 {
+            if parts.len() >= 9 {
                 windows.push(WindowInfo {
-                    window_id: parts.get(0).unwrap_or(&"").to_string(),
-                    title: parts.get(1).unwrap_or(&"Unknown").to_string(),
-                    app_name: "Unknown".to_string(),
-                    process_id: parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(0),
-                    is_minimized: parts.get(7).map(|s| *s == "True").unwrap_or(false),
+                    window_id: parts[0].to_string(),
+                    title: parts[1].to_string(),
+                    app_name: parts[8].to_string(),
+                    process_id: parts[2].parse().unwrap_or(0),
+                    is_minimized: parts[7] == "True",
                     is_visible: true,
                     display_id: 0,
                     bounds: WindowBounds {
-                        x: parts.get(3).and_then(|s| s.parse().ok()).unwrap_or(0),
-                        y: parts.get(4).and_then(|s| s.parse().ok()).unwrap_or(0),
-                        width: parts.get(5).and_then(|s| s.parse().ok()).unwrap_or(800),
-                        height: parts.get(6).and_then(|s| s.parse().ok()).unwrap_or(600),
+                        x: parts[3].parse().unwrap_or(0),
+                        y: parts[4].parse().unwrap_or(0),
+                        width: parts[5].parse().unwrap_or(800),
+                        height: parts[6].parse().unwrap_or(600),
                     },
                 });
             }
         }
 
+        tracing::debug!("Found {} windows", windows.len());
         Ok(windows)
     }
 

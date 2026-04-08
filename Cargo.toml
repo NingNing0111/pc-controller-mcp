@@ -50,3 +50,6 @@ schemars = "0.8"
 
 # Image processing
 image = { version = "0.25", features = ["png"] }
+
+# Base64 encoding
+base64 = "0.22"

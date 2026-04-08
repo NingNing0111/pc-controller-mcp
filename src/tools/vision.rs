@@ -41,8 +41,8 @@ pub struct AlternativeTarget {
 /// Arguments for analyze_task
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AnalyzeTaskArgs {
-    /// Screenshot image as base64 PNG bytes
-    pub image_base64: String,
+    /// Screenshot image file path
+    pub image_path: String,
     /// Task description (e.g., "Find the username input field")
     pub task: String,
     /// Grid columns (for grid coordinate format)
@@ -129,9 +129,14 @@ fn bbox_to_click_point(bbox: &[i32; 4]) -> [i32; 2] {
 /// Call OpenAI Vision API
 async fn call_vision_api(
     config: &VisionConfig,
-    image_base64: &str,
+    image_path: &str,
     task: &str,
 ) -> Result<serde_json::Value, PcControllerError> {
+    // Read image file and encode to base64
+    let image_bytes = std::fs::read(image_path)
+        .map_err(|e| PcControllerError::PlatformError(format!("Failed to read image file {}: {}", image_path, e)))?;
+    let image_base64 = BASE64.encode(&image_bytes);
+
     let url = format!("{}/chat/completions", config.base_url);
 
     let request_body = json!({
@@ -308,7 +313,7 @@ pub async fn analyze_task(
     // Retry logic with exponential backoff
     let mut last_error = None;
     for attempt in 0..3 {
-        match call_vision_api(&config, &args.image_base64, &args.task).await {
+        match call_vision_api(&config, &args.image_path, &args.task).await {
             Ok(response) => {
                 let mut result = parse_vision_response(
                     response,

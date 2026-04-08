@@ -1,5 +1,6 @@
 //! MCP Tools implementation
 
+pub mod coordinate_overlay;
 pub mod screen;
 pub mod window;
 pub mod input;

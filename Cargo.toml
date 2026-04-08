@@ -51,5 +51,9 @@ schemars = "0.8"
 # Image processing
 image = { version = "0.25", features = ["png"] }
 
+# Coordinate overlay text rendering
+imageproc = "0.25"
+rusttype = "0.9"
+
 # Base64 encoding
 base64 = "0.22"

@@ -2,6 +2,8 @@
 
 use crate::error::PcControllerError;
 use crate::platform::Platform;
+use crate::tools::coordinate_overlay::{apply_coordinate_overlay, CoordinateOverlayOptions};
+use image::ImageEncoder;
 use rmcp::model::*;
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
@@ -51,6 +53,16 @@ pub struct CaptureScreenArgs {
     /// Output format: file (default), base64, bytes
     #[serde(default)]
     pub format: Option<OutputFormat>,
+
+    /// Include coordinate overlay (default: false)
+    /// When true, draws X/Y axes with tick marks and pixel coordinates
+    #[serde(default)]
+    pub include_coordinates: Option<bool>,
+
+    /// Coordinate tick interval in pixels (default: 100)
+    /// Only used when include_coordinates is true
+    #[serde(default)]
+    pub coordinate_interval: Option<u32>,
 }
 
 /// Save screenshot to temp file and return the path
@@ -98,26 +110,57 @@ pub fn capture_screen<P: Platform>(
         }
     };
 
+    // Apply coordinate overlay if requested
+    let final_bytes = if args.include_coordinates.unwrap_or(false) {
+        let img = image::load_from_memory(&image_bytes)
+            .map_err(|e| PcControllerError::CaptureError(format!("Failed to decode image: {}", e)))?;
+
+        let interval = args.coordinate_interval.unwrap_or(100);
+        let options = CoordinateOverlayOptions {
+            show_overlay: true,
+            tick_interval: interval,
+            minor_tick_interval: interval / 2,
+            line_width: 2,
+        };
+
+        let overlay_img = apply_coordinate_overlay(&img, &options);
+
+        // Encode back to PNG
+        let mut buffer = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut buffer);
+        let rgba_img = overlay_img.to_rgba8();
+        encoder.write_image(
+            rgba_img.as_raw(),
+            rgba_img.width(),
+            rgba_img.height(),
+            image::ExtendedColorType::Rgba8,
+        ).map_err(|e| PcControllerError::CaptureError(format!("Failed to encode overlay: {}", e)))?;
+
+        buffer
+    } else {
+        image_bytes
+    };
+
     let format = args.format.as_ref().unwrap_or(&OutputFormat::File);
 
     let result = match format {
         OutputFormat::File => {
-            let path = save_to_temp_file(&image_bytes, "screenshot")?;
+            let path = save_to_temp_file(&final_bytes, "screenshot")?;
             serde_json::json!({
                 "path": path.to_string_lossy(),
-                "size": image_bytes.len()
+                "size": final_bytes.len()
             }).to_string()
         }
         OutputFormat::Base64 => {
             use base64::{Engine as _, engine::general_purpose::STANDARD};
-            let base64 = STANDARD.encode(&image_bytes);
+            let base64 = STANDARD.encode(&final_bytes);
             serde_json::json!({
                 "base64": base64,
-                "size": image_bytes.len()
+                "size": final_bytes.len()
             }).to_string()
         }
         OutputFormat::Bytes => {
-            format!("Screenshot captured: {} bytes", image_bytes.len())
+            format!("Screenshot captured: {} bytes", final_bytes.len())
         }
     };
 

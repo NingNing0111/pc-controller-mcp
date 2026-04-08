@@ -1,6 +1,9 @@
 //! STDIO transport implementation
 
+#[cfg(target_os = "macos")]
 use crate::platform::{MacOSPlatform, Platform};
+#[cfg(target_os = "windows")]
+use crate::platform::{WindowsPlatform, Platform};
 use crate::tools::PcController;
 use rmcp::ServiceExt;
 
@@ -31,7 +34,9 @@ pub async fn run_auto() -> anyhow::Result<()> {
 
     #[cfg(target_os = "windows")]
     {
-        Err(anyhow::anyhow!("Windows platform not yet implemented"))
+        let platform = WindowsPlatform::new()
+            .map_err(|e| anyhow::anyhow!("Failed to initialize Windows platform: {}", e))?;
+        run(platform).await
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]

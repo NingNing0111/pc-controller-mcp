@@ -1,6 +1,9 @@
 //! HTTP Streamable transport implementation
 
+#[cfg(target_os = "macos")]
 use crate::platform::{MacOSPlatform, Platform};
+#[cfg(target_os = "windows")]
+use crate::platform::{WindowsPlatform, Platform};
 use crate::tools::PcController;
 use axum::Router;
 use axum::response::Json;
@@ -58,16 +61,16 @@ pub async fn run<P: Platform + 'static>(
 }
 
 /// Run with platform auto-detection
+#[cfg(target_os = "macos")]
 pub async fn run_auto(addr: SocketAddr, cors: bool) -> anyhow::Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        let platform = MacOSPlatform::new()
-            .map_err(|e| anyhow::anyhow!("Failed to initialize macOS platform: {}", e))?;
-        run(platform, addr, cors).await
-    }
+    let platform = MacOSPlatform::new()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize macOS platform: {}", e))?;
+    run(platform, addr, cors).await
+}
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        Err(anyhow::anyhow!("Only macOS is supported currently"))
-    }
+#[cfg(target_os = "windows")]
+pub async fn run_auto(addr: SocketAddr, cors: bool) -> anyhow::Result<()> {
+    let platform = WindowsPlatform::new()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize Windows platform: {}", e))?;
+    run(platform, addr, cors).await
 }

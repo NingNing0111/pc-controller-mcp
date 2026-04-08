@@ -142,7 +142,7 @@ public class WindowHelper {
                     title: parts.get(1).unwrap_or(&"Unknown").to_string(),
                     app_name: "Unknown".to_string(),
                     process_id: parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(0),
-                    is_minimized: parts.get(7).map(|s| s == "True").unwrap_or(false),
+                    is_minimized: parts.get(7).map(|s| *s == "True").unwrap_or(false),
                     is_visible: true,
                     display_id: 0,
                     bounds: WindowBounds {
@@ -195,6 +195,7 @@ $hwnd = [IntPtr]::new({})
     }
 
     fn capture_fullscreen(&self, _display_id: Option<u32>) -> Result<Vec<u8>, PcControllerError> {
+        use image::ImageEncoder;
         use xcap::Monitor;
 
         let monitors = Monitor::all()
@@ -211,20 +212,22 @@ $hwnd = [IntPtr]::new({})
 
         let mut buffer = Vec::new();
         let encoder = image::codecs::png::PngEncoder::new(&mut buffer);
-        encoder
-            .encode(&image, image.width(), image.height(), image::ExtendedColorType::Rgba8)
-            .map_err(|e| PcControllerError::CaptureError(format!("Failed to encode PNG: {}", e)))?;
+        encoder.write_image(
+            image.as_raw(),
+            image.width(),
+            image.height(),
+            image::ExtendedColorType::Rgba8,
+        ).map_err(|e| PcControllerError::CaptureError(format!("Failed to encode PNG: {}", e)))?;
 
         Ok(buffer)
     }
 
     fn capture_window(&self, _window_id: &str) -> Result<Vec<u8>, PcControllerError> {
-        let fullscreen = self.capture_fullscreen(None)?;
-        Ok(fullscreen)
+        self.capture_fullscreen(None)
     }
 
     fn capture_region(&self, x: i32, y: i32, width: u32, height: u32) -> Result<Vec<u8>, PcControllerError> {
-        use image::{ImageBuffer, Rgba};
+        use image::ImageEncoder;
 
         let monitors = xcap::Monitor::all()
             .map_err(|e| PcControllerError::CaptureError(format!("Failed to get monitors: {}", e)))?;
@@ -238,19 +241,16 @@ $hwnd = [IntPtr]::new({})
             .capture_image()
             .map_err(|e| PcControllerError::CaptureError(format!("Failed to capture screen: {}", e)))?;
 
-        let cropped: ImageBuffer<Rgba<u8>, Vec<u8>> = image::imageops::crop_imm(
-            &image,
-            x as u32,
-            y as u32,
-            width,
-            height,
-        ).to_image();
+        let cropped = image::imageops::crop_imm(&image, x as u32, y as u32, width, height).to_image();
 
         let mut buffer = Vec::new();
         let encoder = image::codecs::png::PngEncoder::new(&mut buffer);
-        encoder
-            .encode(&cropped, width, height, image::ExtendedColorType::Rgba8)
-            .map_err(|e| PcControllerError::CaptureError(format!("Failed to encode PNG: {}", e)))?;
+        encoder.write_image(
+            cropped.as_raw(),
+            width,
+            height,
+            image::ExtendedColorType::Rgba8,
+        ).map_err(|e| PcControllerError::CaptureError(format!("Failed to encode PNG: {}", e)))?;
 
         Ok(buffer)
     }
@@ -332,7 +332,7 @@ $hwnd = [IntPtr]::new({})
                 KeyModifier::Ctrl => Key::Control,
                 KeyModifier::Alt => Key::Alt,
                 KeyModifier::Shift => Key::Shift,
-                KeyModifier::Cmd => Key::Super,
+                KeyModifier::Cmd => Key::Meta,
             };
             enigo.key(key, Direction::Press)
                 .map_err(|e| PcControllerError::InputError(format!("Failed to press modifier: {}", e)))?;
@@ -369,7 +369,7 @@ $hwnd = [IntPtr]::new({})
                 KeyModifier::Ctrl => Key::Control,
                 KeyModifier::Alt => Key::Alt,
                 KeyModifier::Shift => Key::Shift,
-                KeyModifier::Cmd => Key::Super,
+                KeyModifier::Cmd => Key::Meta,
             };
             enigo.key(key, Direction::Release)
                 .map_err(|e| PcControllerError::InputError(format!("Failed to release modifier: {}", e)))?;

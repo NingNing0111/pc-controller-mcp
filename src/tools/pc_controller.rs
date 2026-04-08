@@ -3,6 +3,7 @@
 use crate::platform::Platform;
 use crate::tools::input::{grid_mouse_input, keyboard_input, mouse_input, GridMouseInputArgs, KeyboardInputArgs, MouseInputArgs};
 use crate::tools::screen::{capture_screen, CaptureScreenArgs};
+use crate::tools::vision::{analyze_task, AnalyzeTaskArgs};
 use crate::tools::window::{focus_window, list_windows, FocusWindowArgs};
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -109,6 +110,21 @@ impl<P: Platform + 'static> PcController<P> {
         Parameters(args): Parameters<GridMouseInputArgs>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         grid_mouse_input(self.platform.as_ref(), &args)
+            .map_err(|e| rmcp::ErrorData {
+                code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                message: e.to_string().into(),
+                data: None,
+            })
+    }
+
+    #[tool(name = "analyze_task", description = "Analyze screenshot using vision LLM to locate UI elements. Returns analysis, bounding box, click point, and optional grid ID.")]
+    fn analyze_task(
+        &self,
+        Parameters(args): Parameters<AnalyzeTaskArgs>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        // Note: analyze_task is async but we need to block here since MCP handlers are sync
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(analyze_task(&args))
             .map_err(|e| rmcp::ErrorData {
                 code: rmcp::model::ErrorCode::INTERNAL_ERROR,
                 message: e.to_string().into(),

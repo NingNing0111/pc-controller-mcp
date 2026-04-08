@@ -54,15 +54,20 @@ pub struct CaptureScreenArgs {
     #[serde(default)]
     pub format: Option<OutputFormat>,
 
-    /// Include coordinate overlay (default: false)
-    /// When true, draws X/Y axes with tick marks and pixel coordinates
+    /// Include grid overlay (default: true)
+    /// When true, draws hierarchical grid (Level 1: 6x4 A1-F4)
+    /// AI uses grid IDs like "B3" to specify click targets
+    /// Set to false to disable grid overlay
     #[serde(default)]
     pub include_coordinates: Option<bool>,
 
-    /// Coordinate tick interval in pixels (default: 100)
-    /// Only used when include_coordinates is true
+    /// Grid columns (default: 6 for A-F)
     #[serde(default)]
-    pub coordinate_interval: Option<u32>,
+    pub grid_cols: Option<u32>,
+
+    /// Grid rows (default: 4 for 1-4)
+    #[serde(default)]
+    pub grid_rows: Option<u32>,
 }
 
 /// Save screenshot to temp file and return the path
@@ -110,17 +115,17 @@ pub fn capture_screen<P: Platform>(
         }
     };
 
-    // Apply coordinate overlay if requested
-    let final_bytes = if args.include_coordinates.unwrap_or(false) {
+    // Apply grid overlay if requested (default: true)
+    let final_bytes = if args.include_coordinates.unwrap_or(true) {
         let img = image::load_from_memory(&image_bytes)
             .map_err(|e| PcControllerError::CaptureError(format!("Failed to decode image: {}", e)))?;
 
-        let interval = args.coordinate_interval.unwrap_or(100);
         let options = CoordinateOverlayOptions {
             show_overlay: true,
-            tick_interval: interval,
-            minor_tick_interval: interval / 2,
+            grid_cols: args.grid_cols.unwrap_or(6),
+            grid_rows: args.grid_rows.unwrap_or(4),
             line_width: 2,
+            highlight_cell: None,
         };
 
         let overlay_img = apply_coordinate_overlay(&img, &options);

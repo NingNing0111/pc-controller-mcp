@@ -16,6 +16,13 @@ pub use windows::WindowsPlatform;
 
 use crate::error::PcControllerError;
 
+/// Screen dimensions
+#[derive(Debug, Clone, Copy)]
+pub struct ScreenDimensions {
+    pub width: u32,
+    pub height: u32,
+}
+
 /// Unified platform trait
 pub trait Platform: Send + Sync {
     // Window management
@@ -26,6 +33,7 @@ pub trait Platform: Send + Sync {
     fn capture_fullscreen(&self, display_id: Option<u32>) -> Result<Vec<u8>, PcControllerError>;
     fn capture_window(&self, window_id: &str) -> Result<Vec<u8>, PcControllerError>;
     fn capture_region(&self, x: i32, y: i32, width: u32, height: u32) -> Result<Vec<u8>, PcControllerError>;
+    fn get_screen_dimensions(&self) -> ScreenDimensions;
 
     // Input simulation
     fn keyboard_type(&self, text: &str) -> Result<(), PcControllerError>;

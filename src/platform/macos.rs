@@ -2,7 +2,7 @@
 
 use crate::error::PcControllerError;
 use crate::platform::{
-    InputAction, KeyModifier, MouseButton, Platform, WindowBounds, WindowInfo,
+    InputAction, KeyModifier, MouseButton, Platform, ScreenDimensions, WindowBounds, WindowInfo,
 };
 use enigo::{
     Axis, Button, Coordinate, Direction, Enigo, Keyboard, Key, Mouse, Settings,
@@ -32,6 +32,17 @@ impl MacOSPlatform {
 }
 
 impl Platform for MacOSPlatform {
+    fn get_screen_dimensions(&self) -> ScreenDimensions {
+        let monitors = Monitor::all().unwrap_or_default();
+        if let Some(monitor) = monitors.first() {
+            ScreenDimensions {
+                width: monitor.width().unwrap_or(1920),
+                height: monitor.height().unwrap_or(1080),
+            }
+        } else {
+            ScreenDimensions { width: 1920, height: 1080 }
+        }
+    }
     fn list_windows(&self) -> Result<Vec<WindowInfo>, PcControllerError> {
         use std::process::Command;
 

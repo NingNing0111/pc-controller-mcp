@@ -1,7 +1,7 @@
 //! PC Controller MCP Server implementation
 
 use crate::platform::Platform;
-use crate::tools::input::{keyboard_input, mouse_input, KeyboardInputArgs, MouseInputArgs};
+use crate::tools::input::{grid_mouse_input, keyboard_input, mouse_input, GridMouseInputArgs, KeyboardInputArgs, MouseInputArgs};
 use crate::tools::screen::{capture_screen, CaptureScreenArgs};
 use crate::tools::window::{focus_window, list_windows, FocusWindowArgs};
 use rmcp::handler::server::tool::ToolRouter;
@@ -96,6 +96,19 @@ impl<P: Platform + 'static> PcController<P> {
         Parameters(args): Parameters<MouseInputArgs>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         mouse_input(self.platform.as_ref(), &args)
+            .map_err(|e| rmcp::ErrorData {
+                code: rmcp::model::ErrorCode::INTERNAL_ERROR,
+                message: e.to_string().into(),
+                data: None,
+            })
+    }
+
+    #[tool(name = "grid_mouse_input", description = "Send mouse input using grid cell ID (like B3) with optional offset. Grid IDs match capture_screen grid overlay labels.")]
+    fn grid_mouse_input(
+        &self,
+        Parameters(args): Parameters<GridMouseInputArgs>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        grid_mouse_input(self.platform.as_ref(), &args)
             .map_err(|e| rmcp::ErrorData {
                 code: rmcp::model::ErrorCode::INTERNAL_ERROR,
                 message: e.to_string().into(),
